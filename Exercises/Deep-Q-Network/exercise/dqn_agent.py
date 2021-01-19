@@ -16,6 +16,7 @@ LR = 5e-4               # learning rate
 UPDATE_EVERY = 4        # how often to update the network
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#device = torch.device('cpu')
 
 class Agent():
     """Interacts with and learns from the environment."""
@@ -36,12 +37,16 @@ class Agent():
         # Q-Network
         self.qnetwork_local = QNetwork(state_size, action_size, seed).to(device)
         self.qnetwork_target = QNetwork(state_size, action_size, seed).to(device)
+        #self.qnetwork_local = QNetwork(state_size, action_size, seed).cuda()
+        #self.qnetwork_target = QNetwork(state_size, action_size, seed).cuda()
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
 
         # Replay memory
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
+        
+        print('running on: ', device)
     
     def step(self, state, action, reward, next_state, done):
         # Save experience in replay memory
@@ -64,6 +69,7 @@ class Agent():
             eps (float): epsilon, for epsilon-greedy action selection
         """
         state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        #state = torch.from_numpy(state).float().unsqueeze(0).cuda()
         self.qnetwork_local.eval()
         with torch.no_grad():
             action_values = self.qnetwork_local(state)
@@ -87,7 +93,20 @@ class Agent():
 
         ## TODO: compute and minimize the loss
         "*** YOUR CODE HERE ***"
-        
+        # Get max predicted Q values (for next states) from target model
+        Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
+        # Compute Q targets for current states 
+        Q_targets = rewards + (gamma * Q_targets_next * (1 - dones))
+
+        # Get expected Q values from local model
+        Q_expected = self.qnetwork_local(states).gather(1, actions)
+
+        # Compute loss
+        loss = F.mse_loss(Q_expected, Q_targets)
+        # Minimize the loss
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
         # ------------------- update target network ------------------- #
         self.soft_update(self.qnetwork_local, self.qnetwork_target, TAU)                     
@@ -139,6 +158,12 @@ class ReplayBuffer:
         rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
         next_states = torch.from_numpy(np.vstack([e.next_state for e in experiences if e is not None])).float().to(device)
         dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None]).astype(np.uint8)).float().to(device)
+        
+        '''states = torch.from_numpy(np.vstack([e.state for e in experiences if e is not None])).float().cuda()
+        actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().cuda()
+        rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().cuda()
+        next_states = torch.from_numpy(np.vstack([e.next_state for e in experiences if e is not None])).float().cuda()
+        dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None]).astype(np.uint8)).float().cuda()'''
   
         return (states, actions, rewards, next_states, dones)
 
